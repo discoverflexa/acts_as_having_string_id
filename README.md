@@ -1,4 +1,7 @@
 # ActsAsHavingStringId
+
+[![codecov](https://codecov.io/gh/hult/acts_as_having_string_id/branch/master/graph/badge.svg)](https://codecov.io/gh/hult/acts_as_having_string_id)
+
 A Rails plugin for exposing non-sequential (Youtube-like) string IDs instead of the sequential integer IDs provided by Rails.
 
 Before, your API may look like
@@ -28,11 +31,11 @@ Exposing sequential integer IDs has several drawbacks:
 "But why not just use UUIDs", you ask? Rails has built-in support for them. But they are very long. Exposing them in an API is okay, but in a URL just doesn't look nice
 
     http://example.com/objects/be398f64-320f-4731-be73-74699e6795bc
-    
+
 Even base62 encoding that ID is very long
 
     http://example.com/objects/27WzQMxpvINgio2w5Xt0hk
-    
+
 64-bit integers would be optimal, but they can't be random: the risk of collisions would be too high.
 
 ## Our solution
@@ -60,10 +63,12 @@ First, set up your `secrets.yml`:
 
 Then, call the method in your model class, after any relations to other models:
 
-    class MyModel < ApplicationRecord
-       has_many :my_other_model
-       acts_as_having_string_id
-    end
+```ruby
+class MyModel < ApplicationRecord
+  has_many :my_other_model
+  acts_as_having_string_id
+end
+```
 
 The id of your model will now not be an int, but rather an instance of `ActsAsHavingStringId::StringId`. As an example:
 
@@ -81,21 +86,23 @@ All ActiveRecord functions will continue to accept int IDs, but will now also ac
     => #<MyModel id: 1/7EajpSfdWIf, created_at: "2016-08-31 13:27:02", updated_at: "2016-08-31 13:27:02">
     > MyModel.where(id: "7EajpSfdWIf")
     => #<ActiveRecord::Relation [#<MyModel id: 1/7EajpSfdWIf, created_at: "2016-08-31 13:27:02", updated_at: "2016-08-31 13:27:02">]>
-    
+
 In all associated models, foreign keys to your model will also be this new type of id.
 
     > MyOtherModel.create! my_model: MyModel.first
-    => #<MyOtherModel id: 1, my_model_id: 1/GBpjdLndSR0, created_at: "2016-09-07 10:32:24", updated_at: "2016-09-07 10:32:24"> 
+    => #<MyOtherModel id: 1, my_model_id: 1/GBpjdLndSR0, created_at: "2016-09-07 10:32:24", updated_at: "2016-09-07 10:32:24">
 
 Then, for exposing your string ID, make sure to always use `id.to_s`. For example, if you're using [ActiveModelSerializers](https://github.com/rails-api/active_model_serializers):
 
-    class UserSerializer < ActiveModel::Serializer
-      attributes :id, :name
+```ruby
+class UserSerializer < ActiveModel::Serializer
+  attributes :id, :name
 
-      def id
-        object.id.to_s
-      end
-    end
+  def id
+    object.id.to_s
+  end
+end
+```
 
 You can get the string representation of an ID from a class without having the instance
 
@@ -108,6 +115,30 @@ And, conversely, getting the ID from the string representation
     => 1
 
 And that's just about it!
+
+## But I'm getting these weird type cast errors
+
+If you have `has_many :through` relations in your app, you may need to add a few associations more in your app in order for Rails to understand how your data model fits together. For example in this model
+
+```ruby
+class Author < ApplicationRecord
+end
+
+class Blog < ApplicationRecord
+  has_many :posts
+  has_many :authors, through: :posts
+  acts_as_having_string_id
+end
+
+class Post < ApplicationRecord
+  belongs_to :blog
+  belongs_to :author
+end
+```
+
+an attempt to do `Blog.first.authors` will raise a `TypeError: can't cast ActsAsHavingStringId::StringId`.
+
+In order to fix this, you'll need to add the missing association `has_many :posts` to `Author`.
 
 ## TODO
 * Since the `MyModel.find("7EajpSfdWIf")` functionality depends on the argument now being a string, `MyModel.find("5")` will no longer mean `MyModel.find(5)`, but rather `MyModel.find(4387534)` or something. Is that a problem?
